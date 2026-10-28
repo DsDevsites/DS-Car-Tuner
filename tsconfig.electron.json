@@ -12,5 +12,5 @@
     "rootDir": "electron",
     "noEmitOnError": true
   },
-  "include": ["electron/**/*.ts"]
+  "include": ["electron/**/*.ts", "electron/**/*.cts"]
 }
