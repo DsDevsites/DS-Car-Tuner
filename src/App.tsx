@@ -17,7 +17,6 @@ const formatBytes = (bytes: number) => {
 function App() {
   const [tab, setTab] = useState<Tab>("garage");
   const [version, setVersion] = useState("0.1.0");
-  const [installations, setInstallations] = useState<string[]>([]);
   const [installationPath, setInstallationPath] = useState("");
   const [vehicles, setVehicles] = useState<VehicleSummary[]>([]);
   const [selectedId, setSelectedId] = useState("");
@@ -46,7 +45,6 @@ function App() {
       .then(([appVersion, found]) => {
         if (!active) return;
         setVersion(appVersion);
-        setInstallations(found);
         if (found.length === 1) {
           setInstallationPath(found[0]);
           void loadCars(found[0]);
