@@ -1,8 +1,7 @@
-import { app, BrowserWindow, dialog, ipcMain } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { existsSync } from "node:fs";
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
 
 const isDev = !app.isPackaged;
 let mainWindow: BrowserWindow | null = null;
@@ -130,7 +129,6 @@ async function scanVehicle(folderPath: string): Promise<VehicleSummary> {
 }
 
 ipcMain.handle("app:version", () => app.getVersion());
-
 ipcMain.handle("game:find-installations", async () => findInstallations());
 
 ipcMain.handle("game:choose-installation", async () => {
@@ -142,8 +140,7 @@ ipcMain.handle("game:choose-installation", async () => {
   if (result.canceled || result.filePaths.length === 0) return null;
 
   const chosen = result.filePaths[0];
-  const carsPath = path.join(chosen, "content", "cars");
-  if (existsSync(carsPath)) return chosen;
+  if (existsSync(path.join(chosen, "content", "cars"))) return chosen;
 
   const nested = path.join(chosen, "assettocorsa");
   if (existsSync(path.join(nested, "content", "cars"))) return nested;
@@ -195,7 +192,6 @@ ipcMain.handle("system:open-folder", async (_event, folderPath: string) => {
   if (typeof folderPath !== "string" || !path.isAbsolute(folderPath) || !existsSync(folderPath)) {
     throw new Error("Pasta inválida.");
   }
-  const { shell } = await import("electron");
   return shell.openPath(folderPath);
 });
 
@@ -209,6 +205,3 @@ app.whenReady().then(() => {
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
-
-// Keep local paths as file URLs out of the renderer; only the main process accesses the filesystem.
-void pathToFileURL;
