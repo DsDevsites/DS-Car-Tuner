@@ -8,11 +8,11 @@
   "license": "UNLICENSED",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b tsconfig.app.json tsconfig.electron.json && vite build",
     "preview": "vite preview",
     "electron:dev": "concurrently -k \"vite --host 127.0.0.1\" \"wait-on http://127.0.0.1:5173 && electron .\"",
     "electron:build": "npm run build && electron-builder",
-    "typecheck": "tsc -b --pretty"
+    "typecheck": "tsc -b tsconfig.app.json tsconfig.electron.json --pretty"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",
