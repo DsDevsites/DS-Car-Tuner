@@ -1,10 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  Activity, AlertTriangle, ArrowRight, BadgeCheck, CarFront, Check,
-  ChevronDown, CircleGauge, ClipboardList, Cog, Database, ExternalLink,
-  FileCode2, FolderOpen, Gauge, HardDrive, House, Info, LoaderCircle,
-  RefreshCw, Save, Search, Settings2, ShieldCheck, SlidersHorizontal,
-  Sparkles, Wrench, X
+  Activity, AlertTriangle, ArrowRight, CarFront, Check, ClipboardList, Cog,
+  Database, ExternalLink, FileCode2, FolderOpen, Gauge, HardDrive, Info,
+  LoaderCircle, RefreshCw, Search, ShieldCheck, SlidersHorizontal, Sparkles, X
 } from "lucide-react";
 
 type Tab = "garage" | "engine" | "gearbox" | "physics" | "profiles";
