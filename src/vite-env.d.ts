@@ -20,6 +20,15 @@ type VehicleSummary = {
   imageDataUrl: string | null;
 };
 
+type PowerPresetResult = {
+  originalPeakHp: number;
+  targetPeakHp: number;
+  scaleFactor: number;
+  backupPath: string;
+  powerPath: string;
+  acdDisabled: boolean;
+};
+
 interface Window {
   dsTuner: {
     getVersion(): Promise<string>;
@@ -28,6 +37,7 @@ interface Window {
     listCars(path: string): Promise<VehicleSummary[]>;
     readTextFile(path: string, vehicleId: string, relativePath: string): Promise<{ relativePath: string; content: string }>;
     saveTextFile(path: string, vehicleId: string, relativePath: string, content: string): Promise<{ backupPath: string; savedPath: string }>;
+    applyPowerPreset(path: string, vehicleId: string, targetHp: number, disableAcd: boolean): Promise<PowerPresetResult>;
     openFolder(path: string): Promise<string>;
   };
 }

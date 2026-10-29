@@ -266,6 +266,138 @@ ipcMain.handle("game:save-text-file", async (_event, installationPath: string, v
   return { backupPath, savedPath: target };
 });
 
+
+type PowerPresetResult = {
+  originalPeakHp: number;
+  targetPeakHp: number;
+  scaleFactor: number;
+  backupPath: string;
+  powerPath: string;
+  acdDisabled: boolean;
+};
+
+function parsePowerCurve(content: string): { lines: string[]; points: Array<{ lineIndex: number; rpm: number; torque: number; delimiter: string }> } {
+  const lines = content.replace(/^\uFEFF/, "").split(/\r?\n/);
+  const points: Array<{ lineIndex: number; rpm: number; torque: number; delimiter: string }> = [];
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i].trim();
+    if (!trimmed || trimmed.startsWith(";") || trimmed.startsWith("#")) continue;
+    const match = trimmed.match(/^([+-]?(?:\d+\.?\d*|\.\d+))\s*([|;\t,])\s*([+-]?(?:\d+\.?\d*|\.\d+))\s*$/);
+    if (!match) continue;
+    const rpm = Number(match[1]);
+    const torque = Number(match[3]);
+    if (!Number.isFinite(rpm) || !Number.isFinite(torque)) continue;
+    points.push({ lineIndex: i, rpm, torque, delimiter: match[2] });
+  }
+  if (points.length < 3) throw new Error("A curva power.lut não tem pelo menos 3 pontos RPM|torque reconhecíveis.");
+  for (let i = 1; i < points.length; i++) {
+    if (points[i].rpm <= points[i - 1].rpm) {
+      throw new Error("Os valores de RPM do power.lut precisam estar em ordem crescente e sem duplicatas. Nenhum arquivo foi alterado.");
+    }
+  }
+  if (points.some((point) => point.torque < 0)) {
+    throw new Error("A curva contém torque negativo. Por segurança, a preparação automática foi cancelada.");
+  }
+  return { lines, points };
+}
+
+function estimatePeakHp(points: Array<{ rpm: number; torque: number }>): number {
+  // Assetto Corsa power.lut uses torque in Nm; this estimates metric horsepower (CV).
+  return Math.max(...points.map((point) => (point.rpm * point.torque) / 7023.5));
+}
+
+ipcMain.handle("game:apply-power-preset", async (
+  _event,
+  installationPath: string,
+  vehicleId: string,
+  targetHp: number,
+  disableAcd: boolean
+): Promise<PowerPresetResult> => {
+  if (typeof installationPath !== "string" || !path.isAbsolute(installationPath) ||
+      typeof vehicleId !== "string" || !/^[a-zA-Z0-9_.-]+$/.test(vehicleId) ||
+      !Number.isFinite(targetHp) || targetHp < 100 || targetHp > 3000 ||
+      typeof disableAcd !== "boolean") {
+    throw new Error("Parâmetros da preparação inválidos.");
+  }
+
+  const carsRoot = path.resolve(installationPath, "content", "cars");
+  const root = path.resolve(carsRoot, vehicleId);
+  if (!root.startsWith(carsRoot + path.sep) || !existsSync(root)) throw new Error("Veículo não encontrado nesta instalação.");
+  const dataDirectory = path.join(root, "data");
+  const powerPath = path.join(dataDirectory, "power.lut");
+  const enginePath = path.join(dataDirectory, "engine.ini");
+  const acdPath = path.join(root, "data.acd");
+  const acdBackupName = path.join(root, "data.acd.bak");
+
+  if (!existsSync(dataDirectory)) throw new Error("Este veículo não tem pasta data descompactada. A preparação automática não extrai nem recompila data.acd.");
+  if (!existsSync(powerPath)) throw new Error("Não encontrei data/power.lut neste carro. Nenhum arquivo foi alterado.");
+  if (!existsSync(enginePath)) throw new Error("Não encontrei data/engine.ini. Não é seguro alterar apenas a curva sem conferir a configuração do motor.");
+  if (disableAcd && existsSync(acdPath) && existsSync(acdBackupName)) {
+    throw new Error("Já existe data.acd.bak. Para evitar sobrescrever um backup, renomeie esse backup manualmente ou desmarque a opção de desativar data.acd.");
+  }
+
+  const originalContent = await readFile(powerPath, "utf8");
+  if (originalContent.length > 2_000_000) throw new Error("power.lut é grande demais para preparar com segurança.");
+  const parsed = parsePowerCurve(originalContent);
+  const originalPeakHp = estimatePeakHp(parsed.points);
+  if (!Number.isFinite(originalPeakHp) || originalPeakHp < 1) throw new Error("Não foi possível calcular a potência original desta curva.");
+  const scaleFactor = targetHp / originalPeakHp;
+
+  const updatedLines = [...parsed.lines];
+  for (const point of parsed.points) {
+    const torque = point.torque * scaleFactor;
+    const originalLine = parsed.lines[point.lineIndex];
+    const leading = originalLine.match(/^\s*/)?.[0] ?? "";
+    const trailing = originalLine.match(/\s*$/)?.[0] ?? "";
+    const separatorMatch = originalLine.match(/^\s*[+-]?(?:\d+\.?\d*|\.\d+)\s*([|;\t,])\s*[+-]?(?:\d+\.?\d*|\.\d+)\s*$/);
+    const delimiter = separatorMatch?.[1] ?? "|";
+    const rpmText = String(point.rpm);
+    const torqueText = torque === 0 ? "0" : Number(torque.toFixed(3)).toString();
+    updatedLines[point.lineIndex] = leading + rpmText + delimiter + torqueText + trailing;
+  }
+  const updatedContent = updatedLines.join("\n");
+  const validated = parsePowerCurve(updatedContent);
+  const targetPeakHp = estimatePeakHp(validated.points);
+  if (Math.abs(targetPeakHp - targetHp) > Math.max(1, targetHp * 0.01)) {
+    throw new Error("A validação da curva gerada não atingiu a meta dentro da tolerância de 1%. Nenhum arquivo foi alterado.");
+  }
+
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const backupRoot = path.join(root, ".ds-car-tuner-backups", stamp);
+  const backupPath = path.join(backupRoot, "data", "power.lut");
+  await mkdir(path.dirname(backupPath), { recursive: true });
+  await copyFile(powerPath, backupPath);
+
+  let acdDisabled = false;
+  let acdBackupPath = "";
+  if (disableAcd && existsSync(acdPath)) {
+    acdBackupPath = path.join(backupRoot, "data.acd");
+    await copyFile(acdPath, acdBackupPath);
+    await import("node:fs/promises").then(({ rename }) => rename(acdPath, acdBackupName));
+    acdDisabled = true;
+  }
+
+  const tempPath = powerPath + ".ds-tuner.tmp";
+  try {
+    await writeFile(tempPath, updatedContent, "utf8");
+    const check = await readFile(tempPath, "utf8");
+    if (check !== updatedContent) throw new Error("A verificação do arquivo temporário falhou.");
+    const { rename } = await import("node:fs/promises");
+    await rename(tempPath, powerPath);
+  } catch (error) {
+    const { rm } = await import("node:fs/promises");
+    await rm(tempPath, { force: true }).catch(() => undefined);
+    await copyFile(backupPath, powerPath).catch(() => undefined);
+    if (acdDisabled && existsSync(acdBackupName)) {
+      const { rename } = await import("node:fs/promises");
+      await rename(acdBackupName, acdPath).catch(() => undefined);
+    }
+    throw new Error("Falha ao gravar a curva; o arquivo original foi restaurado. " + (error instanceof Error ? error.message : ""));
+  }
+
+  return { originalPeakHp, targetPeakHp, scaleFactor, backupPath, powerPath, acdDisabled };
+});
+
 ipcMain.handle("system:open-folder", async (_event, folderPath: string) => {
   if (typeof folderPath !== "string" || !path.isAbsolute(folderPath) || !existsSync(folderPath)) {
     throw new Error("Pasta inválida.");
