@@ -116,6 +116,40 @@ async function scanVehicle(folderPath: string): Promise<VehicleSummary> {
     warnings.push("Não foi encontrada pasta data nem data.acd. O carro pode usar uma estrutura diferente.");
   }
 
+  const imageCandidates = [
+    path.join(folderPath, "ui", "preview.png"),
+    path.join(folderPath, "ui", "preview.jpg"),
+    path.join(folderPath, "ui", "preview.jpeg"),
+    path.join(folderPath, "ui", "badge.png")
+  ];
+  // Content Manager car previews commonly live in ui/; some mods only provide skin previews.
+  try {
+    const skinsPath = path.join(folderPath, "skins");
+    if (existsSync(skinsPath)) {
+      const skins = await readdir(skinsPath, { withFileTypes: true });
+      for (const skin of skins.filter((entry) => entry.isDirectory()).slice(0, 20)) {
+        imageCandidates.push(
+          path.join(skinsPath, skin.name, "preview.jpg"),
+          path.join(skinsPath, skin.name, "preview.png")
+        );
+      }
+    }
+  } catch { /* Skin previews are optional. */ }
+
+  let imageDataUrl: string | null = null;
+  for (const imagePath of imageCandidates) {
+    try {
+      if (!existsSync(imagePath)) continue;
+      const imageStat = await stat(imagePath);
+      if (imageStat.size > 8 * 1024 * 1024) continue;
+      const image = await readFile(imagePath);
+      const extension = path.extname(imagePath).toLowerCase();
+      const mime = extension === ".png" ? "image/png" : extension === ".webp" ? "image/webp" : "image/jpeg";
+      imageDataUrl = "data:" + mime + ";base64," + image.toString("base64");
+      break;
+    } catch { /* Ignore an unreadable optional preview and continue scanning. */ }
+  }
+
   const displayName = folderName.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
   return {
     id: folderName,
