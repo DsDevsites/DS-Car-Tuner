@@ -31,6 +31,7 @@ function App() {
   const [showFileModal, setShowFileModal] = useState(false);
   const [editingFile, setEditingFile] = useState(false);
   const [savingFile, setSavingFile] = useState(false);
+  const [workspaceOpen, setWorkspaceOpen] = useState(false);
 
   const selectedVehicle = vehicles.find((vehicle) => vehicle.id === selectedId) ?? null;
   const filteredVehicles = useMemo(() => {
@@ -115,11 +116,11 @@ function App() {
         installationPath, selectedVehicle.id, selectedFile.relativePath, fileContent
       );
       setEditingFile(false);
-      await loadCars(installationPath);
       setNotice({
         kind: "success",
-        message: `Arquivo salvo com backup criado em: ${result.backupPath}`
+        message: `Salvo e verificado. Backup original: ${result.backupPath}`
       });
+      await loadCars(installationPath);
     } catch (error) {
       setNotice({ kind: "error", message: error instanceof Error ? error.message : "Não foi possível salvar o arquivo." });
     } finally {
@@ -202,7 +203,41 @@ function App() {
           </div>
 
           {tab === "garage" ? (
-            <div className="garage-layout">
+            workspaceOpen && selectedVehicle ? (
+                          <section className="vehicle-workspace panel">
+                            <div className="workspace-heading">
+                              <div><div className="section-kicker">VEHICLE WORKSPACE / EDITOR</div><h3>{selectedVehicle.displayName}</h3><p>Selecione um arquivo à esquerda para abrir e editar no espaço de trabalho.</p></div>
+                              <div className="workspace-heading-actions">
+                                <button className="secondary-button small" onClick={() => { setWorkspaceOpen(false); setSelectedFile(null); setFileContent(""); setEditingFile(false); }}><ArrowRight size={14} className="back-arrow" /> Voltar à garagem</button>
+                                <button className="secondary-button small" onClick={() => void window.dsTuner.openFolder(selectedVehicle.folderPath)}><FolderOpen size={14} /> Pasta do veículo</button>
+                              </div>
+                            </div>
+                            <div className="workspace-grid">
+                              <aside className="workspace-file-panel">
+                                <div className="workspace-panel-title"><FileCode2 size={15} /><strong>Arquivos do veículo</strong><span>{selectedVehicle.files.length}</span></div>
+                                <div className="file-search-box workspace-search"><Search size={14} /><input value={fileSearch} onChange={(event) => setFileSearch(event.target.value)} placeholder="Pesquisar .ini, .lut..." aria-label="Pesquisar arquivos para editar" /><button onClick={() => setFileSearch("")} title="Limpar pesquisa"><X size={13} /></button></div>
+                                <div className="workspace-file-list">
+                                  {selectedVehicle.files.filter((file) => { const term = fileSearch.trim().toLowerCase(); return (!term || file.name.toLowerCase().includes(term) || file.relativePath.toLowerCase().includes(term)) && file.readableText; }).map((file) => (
+                                    <button key={file.relativePath} className={selectedFile?.relativePath === file.relativePath ? "workspace-file-row active" : "workspace-file-row"} onClick={() => void openFile(file)}>
+                                      <span className={"file-type type-" + file.kind}>{file.kind.toUpperCase()}</span>
+                                      <span className="workspace-file-name"><strong>{file.name}</strong><small>{file.relativePath}</small></span>
+                                      {selectedFile?.relativePath === file.relativePath && <Check size={14} />}
+                                    </button>
+                                  ))}
+                                </div>
+                              </aside>
+                              <section className="workspace-editor-panel">
+                                {selectedFile ? <>
+                                  <div className="workspace-editor-heading"><div><div className="section-kicker">ARQUIVO SELECIONADO</div><h4>{selectedFile.name}</h4><p>{selectedFile.relativePath}</p></div><span className="workspace-file-kind">{selectedFile.kind.toUpperCase()}</span></div>
+                                  <div className="workspace-editor-notice"><ShieldCheck size={15} /> O arquivo original será copiado para backup antes de salvar.</div>
+                                  <textarea className="workspace-code-editor" spellCheck={false} value={fileContent} onChange={(event) => { setFileContent(event.target.value); setEditingFile(true); }} disabled={fileLoading || savingFile} placeholder={fileLoading ? "Carregando arquivo..." : "Selecione um arquivo para começar..."} aria-label="Editor de arquivo do veículo" />
+                                  <div className="workspace-editor-footer"><span>{fileLoading ? "Carregando..." : fileContent.split("\n").length + " linhas • " + fileContent.length + " caracteres"}</span><button className="primary-button small" disabled={!selectedFile || fileLoading || savingFile || !editingFile} onClick={() => void saveCurrentFile()}>{savingFile ? <LoaderCircle size={14} className="spin" /> : <ShieldCheck size={14} />}{savingFile ? "Salvando..." : "Salvar alterações com backup"}</button></div>
+                                </> : <div className="workspace-empty"><FileCode2 size={34} /><h4>Escolha um arquivo para editar</h4><p>Pesquise por drivetrain.ini, engine.ini, power.lut ou outro arquivo de texto disponível.</p></div>}
+                              </section>
+                            </div>
+                          </section>
+                        ) : (
+                        <div className="garage-layout">
               <section className="panel vehicle-panel">
                 <div className="panel-heading">
                   <div><h3>Veículos instalados</h3><p>Selecione um carro para inspecionar seus dados.</p></div>
@@ -232,6 +267,7 @@ function App() {
                     <span className="cover-id">{selectedVehicle.folderName.toUpperCase()}</span>
                   </div>
                   <div className="inspector-title"><div><div className="section-kicker">SELECTED VEHICLE</div><h3>{selectedVehicle.displayName}</h3><p>Visão geral dos dados disponíveis</p></div><button className="icon-button" title="Abrir pasta do veículo" onClick={() => void window.dsTuner.openFolder(selectedVehicle.folderPath)}><ExternalLink size={16} /></button></div>
+                  <div className="inspector-open-editor"><button className="primary-button small" onClick={() => { setWorkspaceOpen(true); setSelectedFile(null); setFileContent(""); setEditingFile(false); setFileSearch(""); }}><FileCode2 size={15} /> Abrir área de edição <ArrowRight size={14} /></button></div>
                   <div className="vehicle-metrics">
                     <div><span>ARQUIVOS</span><strong>{selectedVehicle.files.length.toString().padStart(2, "0")}</strong></div>
                     <div><span>DATA FOLDER</span><strong className={selectedVehicle.dataPath ? "good-text" : "muted-text"}>{selectedVehicle.dataPath ? "Disponível" : "Ausente"}</strong></div>
@@ -254,6 +290,7 @@ function App() {
                 </> : <div className="empty-state inspector-empty"><div className="empty-icon"><CarFront size={26} /></div><h4>Nenhum veículo selecionado</h4><p>Escolha um veículo na lista para ver os arquivos que podem ser analisados.</p></div>}
               </section>
             </div>
+            )
           ) : (
             <FeaturePlaceholder tab={tab} vehicle={selectedVehicle} onBack={() => setTab("garage")} />
           )}
