@@ -7,5 +7,7 @@ contextBridge.exposeInMainWorld("dsTuner", {
   listCars: (installationPath: string) => ipcRenderer.invoke("game:list-cars", installationPath),
   readTextFile: (installationPath: string, vehicleId: string, relativePath: string) =>
     ipcRenderer.invoke("game:read-text-file", installationPath, vehicleId, relativePath),
+  saveTextFile: (installationPath: string, vehicleId: string, relativePath: string, content: string) =>
+    ipcRenderer.invoke("game:save-text-file", installationPath, vehicleId, relativePath, content),
   openFolder: (folderPath: string): Promise<string> => ipcRenderer.invoke("system:open-folder", folderPath)
 });
