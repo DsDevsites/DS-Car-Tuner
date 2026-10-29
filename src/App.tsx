@@ -116,11 +116,11 @@ function App() {
         installationPath, selectedVehicle.id, selectedFile.relativePath, fileContent
       );
       setEditingFile(false);
+      await loadCars(installationPath);
       setNotice({
         kind: "success",
         message: `Salvo e verificado. Backup original: ${result.backupPath}`
       });
-      await loadCars(installationPath);
     } catch (error) {
       setNotice({ kind: "error", message: error instanceof Error ? error.message : "Não foi possível salvar o arquivo." });
     } finally {
