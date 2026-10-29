@@ -291,6 +291,8 @@ function App() {
               </section>
             </div>
             )
+          ) : tab === "engine" ? (
+            <PowerPresetPanel vehicle={selectedVehicle} installationPath={installationPath} onNotice={setNotice} onRefresh={() => installationPath ? loadCars(installationPath) : Promise.resolve()} />
           ) : (
             <FeaturePlaceholder tab={tab} vehicle={selectedVehicle} onBack={() => setTab("garage")} />
           )}
@@ -309,6 +311,136 @@ function App() {
       </div>}
     </div>
   );
+}
+
+
+function PowerPresetPanel({ vehicle, installationPath, onNotice, onRefresh }: {
+  vehicle: VehicleSummary | null;
+  installationPath: string;
+  onNotice: (notice: Notice | null) => void;
+  onRefresh: () => Promise<void>;
+}) {
+  const [targetHp, setTargetHp] = useState(800);
+  const [customHp, setCustomHp] = useState("800");
+  const [disableAcd, setDisableAcd] = useState(false);
+  const [applying, setApplying] = useState(false);
+  const [curveLoading, setCurveLoading] = useState(false);
+  const [originalPeak, setOriginalPeak] = useState<number | null>(null);
+  const [curveError, setCurveError] = useState("");
+  const powerFile = vehicle?.files.find((file) => file.relativePath.toLowerCase() === "data/power.lut");
+  const engineFile = vehicle?.files.find((file) => file.relativePath.toLowerCase() === "data/engine.ini");
+  const selectedTarget = targetHp === -1 ? Number(customHp) : targetHp;
+  const canApply = Boolean(vehicle && installationPath && powerFile?.readableText && engineFile?.readableText &&
+    Number.isFinite(selectedTarget) && selectedTarget >= 100 && selectedTarget <= 3000 && !curveLoading && !applying);
+
+  useEffect(() => {
+    let active = true;
+    setOriginalPeak(null);
+    setCurveError("");
+    if (!vehicle || !installationPath || !powerFile?.readableText) {
+      setCurveError("Este veículo não possui data/power.lut legível.");
+      return () => { active = false; };
+    }
+    setCurveLoading(true);
+    window.dsTuner.readTextFile(installationPath, vehicle.id, powerFile.relativePath)
+      .then(({ content }) => {
+        const points: Array<{ rpm: number; torque: number }> = [];
+        for (const line of content.split(/\r?\n/)) {
+          const match = line.trim().match(/^([+-]?(?:\d+\.?\d*|\.\d+))\s*\|\s*([+-]?(?:\d+\.?\d*|\.\d+))\s*$/);
+          if (match) points.push({ rpm: Number(match[1]), torque: Number(match[2]) });
+        }
+        if (points.length < 3) throw new Error("Formato não reconhecido. Esperado: RPM|torque.");
+        const peak = Math.max(...points.map((point) => point.rpm * point.torque / 7023.5));
+        if (!Number.isFinite(peak) || peak < 1) throw new Error("A curva não tem potência calculável.");
+        if (active) setOriginalPeak(peak);
+      })
+      .catch((error: unknown) => { if (active) setCurveError(error instanceof Error ? error.message : "Falha ao ler a curva."); })
+      .finally(() => { if (active) setCurveLoading(false); });
+    return () => { active = false; };
+  }, [vehicle?.id, installationPath, powerFile?.relativePath]);
+
+  async function applyPreset() {
+    if (!vehicle || !canApply) return;
+    if (vehicle.dataAcdPath && !disableAcd) {
+      onNotice({ kind: "info", message: "Este carro possui data.acd. Se esse arquivo estiver ativo, o jogo pode ignorar a pasta data. Marque a opção para desativá-lo apenas se quiser usar a pasta data descompactada." });
+      return;
+    }
+    const confirmed = window.confirm(
+      "Aplicar preparação de " + selectedTarget + " HP estimados em " + vehicle.displayName +
+      "?\n\nSerá criado backup de power.lut. O câmbio e o limitador não serão alterados. Feche o jogo antes de continuar."
+    );
+    if (!confirmed) return;
+    setApplying(true);
+    onNotice(null);
+    try {
+      const result = await window.dsTuner.applyPowerPreset(installationPath, vehicle.id, selectedTarget, disableAcd);
+      await onRefresh();
+      onNotice({ kind: "success", message: "Preparação aplicada. Potência estimada: " +
+        result.originalPeakHp.toFixed(0) + " → " + result.targetPeakHp.toFixed(0) +
+        " HP/CV. Backup: " + result.backupPath +
+        (result.acdDisabled ? " | data.acd renomeado para data.acd.bak." : "") });
+      setOriginalPeak(result.targetPeakHp);
+    } catch (error) {
+      onNotice({ kind: "error", message: error instanceof Error ? error.message : "Não foi possível aplicar a preparação." });
+    } finally {
+      setApplying(false);
+    }
+  }
+
+  return <section className="power-lab">
+    <div className="power-lab-intro panel">
+      <div className="power-lab-orb"><Activity size={34} /></div>
+      <div><div className="section-kicker">ENGINE / POWER PRESETS</div><h3>Preparação de motor</h3>
+        <p>Escolha uma meta de potência. A curva original será escalada proporcionalmente, validada e salva com backup.</p></div>
+      <div className="power-lab-badge"><ShieldCheck size={14} /> BACKUP + VALIDAÇÃO</div>
+    </div>
+    {!vehicle ? <div className="panel power-empty"><CarFront size={28} /><h4>Selecione um veículo na garagem</h4><p>Escolha um carro antes de preparar o motor.</p></div> : <>
+      <div className="power-selected panel">
+        <div><div className="section-kicker">VEÍCULO SELECIONADO</div><h4>{vehicle.displayName}</h4><p>{vehicle.folderName}</p></div>
+        <div className="power-file-status">
+          <span className={powerFile?.readableText ? "power-status-good" : "power-status-bad"}><i /> power.lut {powerFile?.readableText ? "encontrado" : "ausente"}</span>
+          <span className={engineFile?.readableText ? "power-status-good" : "power-status-bad"}><i /> engine.ini {engineFile?.readableText ? "encontrado" : "ausente"}</span>
+          <span className={vehicle.dataAcdPath ? "power-status-warn" : "power-status-good"}><i /> data.acd {vehicle.dataAcdPath ? "presente" : "ausente"}</span>
+        </div>
+      </div>
+      <div className="power-preset-grid">
+        {[500, 800, 1000].map((hp) => <button key={hp} className={"power-preset-card " + (targetHp === hp ? "active" : "")} onClick={() => { setTargetHp(hp); setCustomHp(String(hp)); }}>
+          <span className="power-preset-tag">{hp === 500 ? "STAGE 1" : hp === 800 ? "STAGE 2" : "STAGE 3"}</span>
+          <strong>{hp.toLocaleString("pt-BR")}<small> HP</small></strong>
+          <span className="power-preset-description">{hp === 500 ? "Meta inicial" : hp === 800 ? "Preparação extrema" : "Meta experimental"}</span>
+        </button>)}
+        <div className={"power-preset-card custom " + (targetHp === -1 ? "active" : "")}>
+          <span className="power-preset-tag">PERSONALIZADO</span><label htmlFor="custom-hp">Potência alvo (100–3000)</label>
+          <input id="custom-hp" type="number" min="100" max="3000" step="25" value={customHp} onFocus={() => setTargetHp(-1)} onChange={(event) => { setTargetHp(-1); setCustomHp(event.target.value); }} />
+          <span className="power-preset-description">Defina sua própria meta</span>
+        </div>
+      </div>
+      <div className="power-config-grid">
+        <section className="panel power-config-card">
+          <div className="panel-heading"><div><h3>Verificação da curva</h3><p>Estimativa calculada por RPM × torque.</p></div><Gauge size={20} color="#56e5fc" /></div>
+          <div className="power-metrics">
+            <div><span>POTÊNCIA ORIGINAL</span><strong>{curveLoading ? "Lendo..." : originalPeak === null ? "—" : Math.round(originalPeak) + " HP"}</strong></div>
+            <div><span>META SELECIONADA</span><strong>{Number.isFinite(selectedTarget) ? Math.round(selectedTarget) + " HP" : "Inválida"}</strong></div>
+            <div><span>CURVA</span><strong>{originalPeak === null ? "Aguardando" : "Escala proporcional"}</strong></div>
+          </div>
+          {curveError && <div className="power-inline-warning"><AlertTriangle size={15} />{curveError}</div>}
+          {originalPeak !== null && <div className="power-inline-note"><Info size={15} /> Escalar torque não simula turbo nem reforça embreagem, pneus ou transmissão. A meta é uma estimativa matemática, não garantia de dirigibilidade.</div>}
+        </section>
+        <section className="panel power-config-card">
+          <div className="panel-heading"><div><h3>Segurança de aplicação</h3><p>Controle data.acd de forma explícita.</p></div><ShieldCheck size={20} color="#6ee7b7" /></div>
+          <label className={"power-check " + (!vehicle.dataAcdPath ? "disabled" : "")}>
+            <input type="checkbox" checked={disableAcd} disabled={!vehicle.dataAcdPath} onChange={(event) => setDisableAcd(event.target.checked)} />
+            <span><strong>Renomear data.acd para data.acd.bak</strong><small>Use somente para forçar o jogo a usar a pasta data descompactada. Se data.acd.bak já existir, a ação será bloqueada.</small></span>
+          </label>
+          <div className="power-inline-note"><Info size={15} /> Só alteramos power.lut. O câmbio, limitador e suspensão permanecem como estão. Carros que só têm data.acd ainda precisam de extração, não suportada aqui.</div>
+        </section>
+      </div>
+      <div className="power-apply-bar panel">
+        <div><span className="section-kicker">READY TO APPLY</span><strong>{Number.isFinite(selectedTarget) ? selectedTarget.toLocaleString("pt-BR") + " HP" : "Meta inválida"} <small>para {vehicle.displayName}</small></strong><p>Feche o Assetto Corsa antes de aplicar.</p></div>
+        <button className="primary-button" disabled={!canApply} onClick={() => void applyPreset()}>{applying ? <LoaderCircle size={16} className="spin" /> : <Sparkles size={16} />}{applying ? "Aplicando..." : "Aplicar preparação"}<ArrowRight size={15} /></button>
+      </div>
+    </>}
+  </section>;
 }
 
 function FeaturePlaceholder({ tab, vehicle, onBack }: { tab: Tab; vehicle: VehicleSummary | null; onBack: () => void }) {
