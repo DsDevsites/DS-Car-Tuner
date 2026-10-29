@@ -327,11 +327,11 @@ function PowerPresetPanel({ vehicle, installationPath, onNotice, onRefresh }: {
   const [curveLoading, setCurveLoading] = useState(false);
   const [originalPeak, setOriginalPeak] = useState<number | null>(null);
   const [curveError, setCurveError] = useState("");
-  const powerFile = vehicle?.files.find((file) => file.relativePath.toLowerCase() === "data/power.lut");
-  const engineFile = vehicle?.files.find((file) => file.relativePath.toLowerCase() === "data/engine.ini");
+  const powerFile = vehicle?.files.find((file) => file.relativePath.toLowerCase().replace(/\\/g, "/") === "data/power.lut");
+  const engineFile = vehicle?.files.find((file) => file.relativePath.toLowerCase().replace(/\\/g, "/") === "data/engine.ini");
   const selectedTarget = targetHp === -1 ? Number(customHp) : targetHp;
   const canApply = Boolean(vehicle && installationPath && powerFile?.readableText && engineFile?.readableText &&
-    Number.isFinite(selectedTarget) && selectedTarget >= 100 && selectedTarget <= 3000 && !curveLoading && !applying);
+    Number.isFinite(selectedTarget) && selectedTarget >= 100 && selectedTarget <= 3000 && originalPeak !== null && !curveError && !curveLoading && !applying);
 
   useEffect(() => {
     let active = true;
