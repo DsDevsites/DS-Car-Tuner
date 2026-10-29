@@ -249,7 +249,20 @@ ipcMain.handle("game:save-text-file", async (_event, installationPath: string, v
   const backupPath = path.join(backupFolder, relativePath.replace(/^data[\\/]/i, ""));
   await mkdir(path.dirname(backupPath), { recursive: true });
   await copyFile(target, backupPath);
-  await writeFile(target, content, "utf8");
+  try {
+    await writeFile(target, content, "utf8");
+    const writtenContent = await readFile(target, "utf8");
+    if (writtenContent !== content) {
+      throw new Error("A verificação após salvar não corresponde ao conteúdo enviado.");
+    }
+  } catch (error) {
+    // If writing or verification fails, restore the original from the backup.
+    await copyFile(backupPath, target).catch(() => undefined);
+    throw new Error(
+      "Não foi possível confirmar a gravação. O arquivo original foi restaurado a partir do backup. " +
+      (error instanceof Error ? error.message : "")
+    );
+  }
   return { backupPath, savedPath: target };
 });
 
