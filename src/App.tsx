@@ -227,7 +227,7 @@ function App() {
               <section className="panel inspector-panel">
                 {selectedVehicle ? <>
                   <div className="inspector-cover">
-                    <div className="cover-lines" /><div className="cover-glow" /><CarFront className="cover-car" size={116} strokeWidth={0.9} />
+                    <div className="cover-lines" /><div className="cover-glow" />{selectedVehicle.imageDataUrl ? <img className="cover-vehicle-image" src={selectedVehicle.imageDataUrl} alt={selectedVehicle.displayName} /> : <CarFront className="cover-car" size={116} strokeWidth={0.9} />}
                     <span className="cover-label">VEHICLE INSPECTOR <b> / 01</b></span>
                     <span className="cover-id">{selectedVehicle.folderName.toUpperCase()}</span>
                   </div>
@@ -239,8 +239,9 @@ function App() {
                   </div>
                   {selectedVehicle.warnings.map((warning) => <div className="vehicle-warning" key={warning}><AlertTriangle size={15} /><span>{warning}</span></div>)}
                   <div className="file-heading"><div><FileCode2 size={16} /><strong>Arquivos do veículo</strong></div><span>{selectedVehicle.files.length} ITENS</span></div>
+                  <div className="file-search-box"><Search size={14} /><input value={fileSearch} onChange={(event) => setFileSearch(event.target.value)} placeholder="Pesquisar arquivo (ex.: drivetrain.ini, engine.ini, power.lut)..." aria-label="Pesquisar arquivos do veículo" /><button onClick={() => setFileSearch("")} title="Limpar pesquisa"><X size={13} /></button></div>
                   <div className="file-list">
-                    {selectedVehicle.files.slice(0, 8).map((file) => <div className="file-row" key={file.relativePath}>
+                    {selectedVehicle.files.filter((file) => { const term = fileSearch.trim().toLowerCase(); return !term || file.name.toLowerCase().includes(term) || file.relativePath.toLowerCase().includes(term); }).map((file) => <div className="file-row" key={file.relativePath}>
                       <span className={`file-type type-${file.kind}`}>{file.kind === "ini" ? "INI" : file.kind === "lut" ? "LUT" : "FILE"}</span>
                       <div className="file-info"><strong>{file.name}</strong><small>{file.relativePath}</small></div>
                       <span className="file-size">{formatBytes(file.size)}</span>
@@ -264,9 +265,9 @@ function App() {
       {showFileModal && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowFileModal(false); }}>
         <section className="file-modal" role="dialog" aria-modal="true" aria-labelledby="file-modal-title">
           <div className="modal-header"><div className="modal-file-icon"><FileCode2 size={19} /></div><div><h3 id="file-modal-title">{selectedFile?.name ?? "Arquivo"}</h3><p>{selectedFile?.relativePath ?? ""}</p></div><button className="icon-button" onClick={() => setShowFileModal(false)} aria-label="Fechar"><X size={18} /></button></div>
-          <div className="modal-warning"><ShieldCheck size={15} /> Visualização somente leitura. Nenhuma alteração pode ser salva nesta versão.</div>
-          <pre className="code-view">{fileLoading ? "Carregando arquivo..." : fileContent}</pre>
-          <div className="modal-footer"><span>{fileContent.split("\n").length} linhas aproximadas</span><button className="secondary-button small" onClick={() => setShowFileModal(false)}>Fechar visualização</button></div>
+          <div className="modal-warning"><ShieldCheck size={15} /> {editingFile ? "Modo de edição. Ao salvar, o original será copiado para um backup antes da gravação." : "Visualização do arquivo. Use Editar para alterar este INI/LUT; o salvamento cria backup automático."}</div>
+          {editingFile ? <textarea className="code-view code-editor" spellCheck={false} value={fileContent} onChange={(event) => setFileContent(event.target.value)} disabled={fileLoading || savingFile} aria-label="Conteúdo editável do arquivo" /> : <pre className="code-view">{fileLoading ? "Carregando arquivo..." : fileContent}</pre>}
+          <div className="modal-footer"><span>{fileContent.split("\n").length} linhas aproximadas</span><div className="modal-actions">{selectedFile && ["ini", "lut"].includes(selectedFile.kind) && <button className="secondary-button small" disabled={fileLoading || savingFile} onClick={() => setEditingFile((value) => !value)}>{editingFile ? "Voltar à leitura" : "Editar arquivo"}</button>}{editingFile && <button className="primary-button small" disabled={fileLoading || savingFile} onClick={() => void saveCurrentFile()}>{savingFile ? "Salvando..." : "Salvar com backup"}</button>}<button className="secondary-button small" onClick={() => setShowFileModal(false)}>Fechar</button></div></div>
         </section>
       </div>}
     </div>
