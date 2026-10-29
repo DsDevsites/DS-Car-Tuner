@@ -17,6 +17,7 @@ type VehicleSummary = {
   dataAcdPath: string | null;
   files: VehicleFile[];
   warnings: string[];
+  imageDataUrl: string | null;
 };
 
 interface Window {
@@ -26,6 +27,7 @@ interface Window {
     chooseInstallation(): Promise<string | null | { error: string }>;
     listCars(path: string): Promise<VehicleSummary[]>;
     readTextFile(path: string, vehicleId: string, relativePath: string): Promise<{ relativePath: string; content: string }>;
+    saveTextFile(path: string, vehicleId: string, relativePath: string, content: string): Promise<{ backupPath: string; savedPath: string }>;
     openFolder(path: string): Promise<string>;
   };
 }
