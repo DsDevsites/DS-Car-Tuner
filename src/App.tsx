@@ -154,7 +154,7 @@ function App() {
         <div className="sidebar-spacer" />
         <div className="sidebar-status">
           <div className="status-icon"><ShieldCheck size={17} /></div>
-          <div><strong>Modo seguro</strong><span>Leitura por padrão</span></div>
+          <div><strong>Modo seguro</strong><span>Edição com backup</span></div>
           <span className="status-dot" />
         </div>
         <div className="sidebar-bottom"><span>DS DEVSITES</span><span>v{version}</span></div>
@@ -194,7 +194,7 @@ function App() {
           <section className="stats-grid">
             <div className="stat-card"><div className="stat-top"><span className="stat-icon cyan"><CarFront size={18} /></span><span className="stat-trend">GARAGEM</span></div><div className="stat-number">{loading ? "—" : vehicles.length.toString().padStart(2, "0")}</div><div className="stat-label">Veículos identificados</div><div className="stat-foot">{installationPath ? "Instalação conectada" : "Aguardando localização do jogo"}</div></div>
             <div className="stat-card"><div className="stat-top"><span className="stat-icon purple"><Database size={18} /></span><span className="stat-trend">ARQUIVOS</span></div><div className="stat-number">{vehicles.reduce((total, vehicle) => total + vehicle.files.length, 0).toString().padStart(2, "0")}</div><div className="stat-label">Arquivos de dados</div><div className="stat-foot">INI, LUT e outros formatos</div></div>
-            <div className="stat-card"><div className="stat-top"><span className="stat-icon amber"><ShieldCheck size={18} /></span><span className="stat-trend">PROTEÇÃO</span></div><div className="stat-number">100<span className="stat-unit">%</span></div><div className="stat-label">Modo somente leitura</div><div className="stat-foot">Nenhuma modificação gravada</div></div>
+            <div className="stat-card"><div className="stat-top"><span className="stat-icon amber"><ShieldCheck size={18} /></span><span className="stat-trend">PROTEÇÃO</span></div><div className="stat-number">100<span className="stat-unit">%</span></div><div className="stat-label">Backup antes de salvar</div><div className="stat-foot">Arquivos editáveis na área de trabalho</div></div>
           </section>
 
           <div className="section-heading">
@@ -286,7 +286,7 @@ function App() {
                     {selectedVehicle.files.filter((file) => { const term = fileSearch.trim().toLowerCase(); return !term || file.name.toLowerCase().includes(term) || file.relativePath.toLowerCase().includes(term); }).length === 0 && <div className="empty-small">Nenhum arquivo corresponde à pesquisa.</div>}
                     {selectedVehicle.files.length === 0 && <div className="empty-small">Nenhum arquivo de dados aberto foi encontrado para este carro.</div>}
                   </div>
-                  <div className="inspector-note"><ShieldCheck size={16} /><span><strong>Inspeção segura</strong> — nesta versão, os arquivos são lidos sem modificar o conteúdo original.</span></div>
+                  <div className="inspector-note"><ShieldCheck size={16} /><span><strong>Modo seguro</strong> — abra a área de edição para alterar arquivos de texto; o original é copiado para backup antes de salvar.</span></div>
                 </> : <div className="empty-state inspector-empty"><div className="empty-icon"><CarFront size={26} /></div><h4>Nenhum veículo selecionado</h4><p>Escolha um veículo na lista para ver os arquivos que podem ser analisados.</p></div>}
               </section>
             </div>
