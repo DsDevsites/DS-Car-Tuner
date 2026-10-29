@@ -1,6 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { existsSync } from "node:fs";
-import { readdir, readFile, stat } from "node:fs/promises";
+import { copyFile, mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 const isDev = !app.isPackaged;
@@ -23,6 +23,7 @@ type VehicleSummary = {
   dataAcdPath: string | null;
   files: VehicleFile[];
   warnings: string[];
+  imageDataUrl: string | null;
 };
 
 function createWindow() {
@@ -124,7 +125,8 @@ async function scanVehicle(folderPath: string): Promise<VehicleSummary> {
     dataPath: existsSync(dataPath) ? dataPath : null,
     dataAcdPath: existsSync(dataAcdPath) ? dataAcdPath : null,
     files: files.sort((a, b) => a.relativePath.localeCompare(b.relativePath)),
-    warnings
+    warnings,
+    imageDataUrl
   };
 }
 
@@ -186,6 +188,35 @@ ipcMain.handle("game:read-text-file", async (_event, installationPath: string, v
   if (info.size > 2_000_000) throw new Error("Arquivo muito grande para a visualização segura.");
   const content = await readFile(target, "utf8");
   return { relativePath, content };
+});
+
+ipcMain.handle("game:save-text-file", async (_event, installationPath: string, vehicleId: string, relativePath: string, content: string) => {
+  if (
+    typeof installationPath !== "string" ||
+    typeof vehicleId !== "string" ||
+    typeof relativePath !== "string" ||
+    typeof content !== "string" ||
+    vehicleId.includes("..") ||
+    path.isAbsolute(relativePath)
+  ) throw new Error("Solicitação de gravação inválida.");
+
+  if (content.length > 2_000_000) throw new Error("O conteúdo é grande demais para salvar com segurança.");
+  const root = path.resolve(installationPath, "content", "cars", vehicleId);
+  const target = path.resolve(root, relativePath);
+  const dataDirectory = path.resolve(root, "data");
+  if (!target.startsWith(dataDirectory + path.sep)) throw new Error("Só é permitido editar arquivos dentro da pasta data.");
+  const extension = path.extname(target).toLowerCase();
+  if (![".ini", ".lut", ".txt"].includes(extension)) throw new Error("Este formato não pode ser editado.");
+  const info = await stat(target);
+  if (info.size > 2_000_000) throw new Error("Arquivo original muito grande para editar com segurança.");
+
+  const backupRoot = path.join(root, ".ds-car-tuner-backups");
+  const backupFolder = path.join(backupRoot, new Date().toISOString().replace(/[:.]/g, "-"));
+  const backupPath = path.join(backupFolder, relativePath.replace(/^data[\\/]/i, ""));
+  await mkdir(path.dirname(backupPath), { recursive: true });
+  await copyFile(target, backupPath);
+  await writeFile(target, content, "utf8");
+  return { backupPath, savedPath: target };
 });
 
 ipcMain.handle("system:open-folder", async (_event, folderPath: string) => {
