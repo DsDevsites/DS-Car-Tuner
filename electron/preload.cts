@@ -9,5 +9,7 @@ contextBridge.exposeInMainWorld("dsTuner", {
     ipcRenderer.invoke("game:read-text-file", installationPath, vehicleId, relativePath),
   saveTextFile: (installationPath: string, vehicleId: string, relativePath: string, content: string) =>
     ipcRenderer.invoke("game:save-text-file", installationPath, vehicleId, relativePath, content),
+  applyPowerPreset: (installationPath: string, vehicleId: string, targetHp: number, disableAcd: boolean) =>
+    ipcRenderer.invoke("game:apply-power-preset", installationPath, vehicleId, targetHp, disableAcd),
   openFolder: (folderPath: string): Promise<string> => ipcRenderer.invoke("system:open-folder", folderPath)
 });
