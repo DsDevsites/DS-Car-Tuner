@@ -21,6 +21,7 @@ function App() {
   const [vehicles, setVehicles] = useState<VehicleSummary[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [search, setSearch] = useState("");
+  const [fileSearch, setFileSearch] = useState("");
   const [loading, setLoading] = useState(false);
   const [loadingInstallations, setLoadingInstallations] = useState(true);
   const [notice, setNotice] = useState<Notice | null>(null);
@@ -28,6 +29,8 @@ function App() {
   const [fileContent, setFileContent] = useState("");
   const [fileLoading, setFileLoading] = useState(false);
   const [showFileModal, setShowFileModal] = useState(false);
+  const [editingFile, setEditingFile] = useState(false);
+  const [savingFile, setSavingFile] = useState(false);
 
   const selectedVehicle = vehicles.find((vehicle) => vehicle.id === selectedId) ?? null;
   const filteredVehicles = useMemo(() => {
@@ -90,6 +93,7 @@ function App() {
   async function openFile(file: VehicleFile) {
     if (!installationPath || !selectedVehicle || !file.readableText) return;
     setSelectedFile(file);
+    setEditingFile(false);
     setFileLoading(true);
     setShowFileModal(true);
     setFileContent("");
@@ -100,6 +104,26 @@ function App() {
       setFileContent(error instanceof Error ? error.message : "Não foi possível ler este arquivo.");
     } finally {
       setFileLoading(false);
+    }
+  }
+
+  async function saveCurrentFile() {
+    if (!installationPath || !selectedVehicle || !selectedFile || fileLoading || savingFile) return;
+    setSavingFile(true);
+    try {
+      const result = await window.dsTuner.saveTextFile(
+        installationPath, selectedVehicle.id, selectedFile.relativePath, fileContent
+      );
+      setEditingFile(false);
+      setNotice({
+        kind: "success",
+        message: `Arquivo salvo com backup criado em: ${result.backupPath}`
+      });
+      await loadCars(installationPath);
+    } catch (error) {
+      setNotice({ kind: "error", message: error instanceof Error ? error.message : "Não foi possível salvar o arquivo." });
+    } finally {
+      setSavingFile(false);
     }
   }
 
@@ -222,7 +246,7 @@ function App() {
                       <span className="file-size">{formatBytes(file.size)}</span>
                       {file.readableText ? <button className="view-file-button" onClick={() => void openFile(file)}>Ver</button> : <span className="unavailable-chip">—</span>}
                     </div>)}
-                    {selectedVehicle.files.length > 8 && <div className="more-files">+ {selectedVehicle.files.length - 8} arquivos adicionais na pasta do veículo.</div>}
+                    {selectedVehicle.files.filter((file) => { const term = fileSearch.trim().toLowerCase(); return !term || file.name.toLowerCase().includes(term) || file.relativePath.toLowerCase().includes(term); }).length === 0 && <div className="empty-small">Nenhum arquivo corresponde à pesquisa.</div>}
                     {selectedVehicle.files.length === 0 && <div className="empty-small">Nenhum arquivo de dados aberto foi encontrado para este carro.</div>}
                   </div>
                   <div className="inspector-note"><ShieldCheck size={16} /><span><strong>Inspeção segura</strong> — nesta versão, os arquivos são lidos sem modificar o conteúdo original.</span></div>
